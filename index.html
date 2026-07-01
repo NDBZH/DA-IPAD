@@ -691,7 +691,9 @@ async function callWebLLM(devisText,onProgress){
     full+=d; chars+=d.length;
     onProgress&&onProgress(chars,full);
   }
-  return full;
+  const parsed = extractJsonBlock(full);
+  if(!parsed) throw new Error('Réponse du modèle non interprétable en JSON. Réessayez ou simplifiez le devis.');
+  return parsed;
 }
 
 
