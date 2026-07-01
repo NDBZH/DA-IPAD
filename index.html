@@ -631,6 +631,54 @@ async function loadLLMModel(onProgress){
   }
 }
 
+function buildPrompt(devisText){
+  return `Tu analyses un devis fournisseur francais. Reponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni apres, sans balises markdown.
+
+DEVIS :
+---
+${devisText}
+---
+
+FORMAT JSON EXACT :
+{
+  "fournisseur_nom": "nom de la societe fournisseur",
+  "fournisseur_adresse": "adresse complete du fournisseur",
+  "fournisseur_email": "email du fournisseur",
+  "fournisseur_tel": "telephone du fournisseur",
+  "devis_numero": "numero ou reference du devis",
+  "lignes": [
+    {"designation": "...", "reference": "...", "quantite": 1, "prix_unitaire_ht": 0.0, "taux_tva": 0.20}
+  ],
+  "frais_port_ht": 0.0
+}
+
+REGLES :
+- "designation" = nom du produit ou prestation (ex: "Cable HDMI 2m", "Licence Office 365"). C'est le libelle commercial de l'article, pas son code.
+- "reference" = code article du fournisseur (ex: "REF-4521", "ART-001"). Si aucune reference n'est indiquee pour cet article dans le devis, mettre "".
+- "taux_tva" = fraction decimale : 0.20 pour 20%, 0.10 pour 10%, 0.055 pour 5.5%, 0.021 pour 2.1%. Par defaut : 0.20.
+- "quantite" et "prix_unitaire_ht" = nombres uniquement, sans symbole euro.
+- Une entree par article distinct.
+- Si une information est absente, mettre "" ou 0.
+- Repondre UNIQUEMENT avec le JSON, sans explication.`;
+}
+
+function extractJsonBlock(text){
+  if (!text) return null;
+  // strip markdown code fences ```json ... ``` or ``` ... ```
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) text = fenced[1];
+  text = text.trim();
+  try { return JSON.parse(text); } catch(e){}
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start){
+    try { return JSON.parse(text.slice(start, end+1)); } catch(e){}
+  }
+  console.warn('extractJsonBlock failed on:', text.slice(0,300));
+  return null;
+}
+
+
 async function callWebLLM(devisText,onProgress){
   if(!_llmReady)throw new Error('Modèle non chargé.');
   const stream=await _llmEngine.chat.completions.create({
