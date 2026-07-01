@@ -219,9 +219,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           <label>Modèle WebLLM</label>
           <div class="cfg-hint">Mistral-7B = meilleure qualité (~4 Go) · Phi-3.5-mini = plus rapide (~2 Go)</div>
           <select id="cfg_model">
-            <option value="Mistral-7B-Instruct-v0.3-q4f16_1-MLC" selected>Mistral-7B · recommandé M5</option>
-            <option value="Phi-3.5-mini-instruct-q4f16_1-MLC">Phi-3.5-mini · rapide</option>
-            <option value="Llama-3.2-3B-Instruct-q4f16_1-MLC">Llama-3.2-3B · léger</option>
+            <option value="Llama-3.2-3B-Instruct-q4f32_1-MLC" selected>Llama-3.2-3B · compatible Safari (recommandé)</option>
+            <option value="Phi-3.5-mini-instruct-q4f32_1-MLC">Phi-3.5-mini · compatible Safari</option>
+            <option value="Mistral-7B-Instruct-v0.3-q4f16_1-MLC">Mistral-7B · si WebGPU f16 disponible</option>
           </select>
         </div>
         <div style="display:flex;align-items:flex-end;">
@@ -566,7 +566,7 @@ async function extractPdfText(file){
 }
 
 /* ---------- Ollama call ---------- */
-function getModel(){ return ((document.getElementById('cfg_model')||{value:'Mistral-7B-Instruct-v0.3-q4f16_1-MLC'}).value.trim())||'Mistral-7B-Instruct-v0.3-q4f16_1-MLC'; }
+function getModel(){ return ((document.getElementById('cfg_model')||{value:'Llama-3.2-3B-Instruct-q4f32_1-MLC'}).value.trim())||'Llama-3.2-3B-Instruct-q4f32_1-MLC'; }
 
 /* ── WebLLM engine (runs in-browser via WebGPU/Metal) ── */
 let _llmEngine=null, _llmReady=false, _llmLoading=false;
@@ -585,7 +585,7 @@ function showLLMOverlay(modelId){
   const ov=document.getElementById('llmOverlay');
   const nm=document.getElementById('llmOverlayModel');
   if(ov) ov.classList.remove('hidden');
-  if(nm) nm.textContent=modelId.split('-').slice(0,2).join('-')+' · première utilisation (~4 Go)';
+  if(nm) nm.textContent=modelId.split('-').slice(0,2).join('-')+' · première utilisation';
 }
 function hideLLMOverlay(){
   const ov=document.getElementById('llmOverlay');
