@@ -631,43 +631,36 @@ async function loadLLMModel(onProgress){
 }
 
 function buildPrompt(devisText){
-  return `<|user|>
-Tu es un assistant qui extrait des données structurées d'un devis fournisseur.
-Reponds UNIQUEMENT avec un JSON valide. Aucun texte avant ou apres le JSON.
+  return `Tu analyses un devis fournisseur francais. Reponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni apres, sans balises markdown.
 
 DEVIS :
+---
 ${devisText}
+---
 
-JSON a retourner (respecte exactement ce format) :
+FORMAT JSON EXACT :
 {
-  "fournisseur_nom": "raison sociale du fournisseur",
-  "fournisseur_adresse": "adresse postale complete",
-  "fournisseur_email": "email si present sinon vide",
-  "fournisseur_tel": "telephone si present sinon vide",
-  "devis_numero": "numero du devis si present sinon vide",
+  "fournisseur_nom": "nom de la societe fournisseur",
+  "fournisseur_adresse": "adresse complete du fournisseur",
+  "fournisseur_email": "email du fournisseur",
+  "fournisseur_tel": "telephone du fournisseur",
+  "devis_numero": "numero ou reference du devis",
   "lignes": [
-    {
-      "designation": "nom du produit ou service (ex: Cable HDMI 2m)",
-      "reference": "code article fournisseur (ex: REF-001) ou vide si absent",
-      "quantite": 1,
-      "prix_unitaire_ht": 0.00,
-      "taux_tva": 0.20
-    }
+    {"designation": "...", "reference": "...", "quantite": 1, "prix_unitaire_ht": 0.0, "taux_tva": 0.20}
   ],
-  "frais_port_ht": 0.00
+  "frais_port_ht": 0.0
 }
 
-Regles :
-- designation = libelle commercial du produit, PAS le code reference
-- reference = code article fournisseur, laisser "" si absent
-- taux_tva : 0.20 = 20%, 0.10 = 10%, 0.055 = 5.5%
-- quantite et prix_unitaire_ht sont des nombres sans symbole
-- frais_port_ht = 0 si pas de frais de port
-- JSON uniquement, sans markdown, sans explication
-<|end|>
-<|assistant|>
-{`;
+REGLES :
+- "designation" = nom du produit ou prestation (ex: "Cable HDMI 2m", "Licence Office 365"). C'est le libelle commercial de l'article, pas son code.
+- "reference" = code article du fournisseur (ex: "REF-4521", "ART-001"). Si aucune reference n'est indiquee pour cet article dans le devis, mettre "".
+- "taux_tva" = fraction decimale : 0.20 pour 20%, 0.10 pour 10%, 0.055 pour 5.5%, 0.021 pour 2.1%. Par defaut : 0.20.
+- "quantite" et "prix_unitaire_ht" = nombres uniquement, sans symbole euro.
+- Une entree par article distinct.
+- Si une information est absente, mettre "" ou 0.
+- Repondre UNIQUEMENT avec le JSON, sans explication.`;
 }
+
 function extractJsonBlock(text){
   if (!text) return null;
   // strip markdown code fences ```json ... ``` or ``` ... ```
