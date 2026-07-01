@@ -219,13 +219,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           <label>Modèle WebLLM</label>
           <div class="cfg-hint">Mistral-7B = meilleure qualité (~4 Go) · Phi-3.5-mini = plus rapide (~2 Go)</div>
           <select id="cfg_model">
-            <option value="Phi-3.5-mini-instruct-q4f32_1-MLC" selected>Phi-3.5-mini · recommandé iPad (~2 Go)</option>
-            <option value="Llama-3.2-3B-Instruct-q4f32_1-MLC">Llama-3.2-3B · alternatif (~2 Go)</option>
+            <option value="onnx-community/Llama-3.2-1B-Instruct" selected>Llama-3.2-1B · léger &amp; rapide (~600 Mo)</option>
+            <option value="onnx-community/Llama-3.2-3B-Instruct">Llama-3.2-3B · meilleure qualité (~1.5 Go)</option>
+            <option value="onnx-community/Phi-3.5-mini-instruct">Phi-3.5-mini · très bonne qualité (~2 Go)</option>
           </select>
         </div>
         <div style="display:flex;align-items:flex-end;">
           <div style="width:100%">
-            <div class="cfg-hint">Le modèle se télécharge une fois (~4 Go) et reste en cache.</div>
+            <div class="cfg-hint">Téléchargement unique, mis en cache. Fonctionne WebGPU ou CPU M5.</div>
             <button class="btn-outline" id="btnPreload" style="margin-top:6px;width:100%">Pré-charger le modèle</button>
           </div>
         </div>
@@ -565,10 +566,10 @@ async function extractPdfText(file){
 }
 
 /* ---------- Ollama call ---------- */
-function getModel(){ return ((document.getElementById('cfg_model')||{value:'Phi-3.5-mini-instruct-q4f32_1-MLC'}).value.trim())||'Phi-3.5-mini-instruct-q4f32_1-MLC'; }
+function getModel(){ return ((document.getElementById('cfg_model')||{value:'onnx-community/Llama-3.2-1B-Instruct'}).value.trim())||'onnx-community/Llama-3.2-1B-Instruct'; }
 
-/* ── WebLLM engine (runs in-browser via WebGPU/Metal) ── */
-let _llmEngine=null, _llmReady=false, _llmLoading=false;
+/* ── Transformers.js engine (ONNX Runtime — WebGPU + WASM fallback) ── */
+let _pipe = null, _llmReady = false, _llmLoading = false;
 
 function setIaBanner(text,state,pct){
   const b=document.getElementById('iaBanner'),
@@ -576,7 +577,7 @@ function setIaBanner(text,state,pct){
         f=document.getElementById('iaProgressFill');
   if(!b)return;
   b.className='ia-banner'+(state==='ready'?' ready':state==='error'?' error':'');
-  l.textContent=text;
+  if(l) l.textContent=text;
   if(f) f.style.width=(pct!=null?pct:state==='ready'?100:0)+'%';
 }
 
@@ -584,18 +585,18 @@ function showLLMOverlay(modelId){
   const ov=document.getElementById('llmOverlay');
   const nm=document.getElementById('llmOverlayModel');
   if(ov) ov.classList.remove('hidden');
-  if(nm) nm.textContent=modelId.split('-').slice(0,2).join('-')+' · première utilisation';
+  if(nm) nm.textContent=modelId.split('/').pop()+' · première utilisation';
 }
 function hideLLMOverlay(){
   const ov=document.getElementById('llmOverlay');
   if(ov) ov.classList.add('hidden');
 }
-function updateLLMOverlay(txt, pct){
+function updateLLMOverlay(txt,pct){
   const pctEl=document.getElementById('llmOverlayPct');
   const fill=document.getElementById('llmBarFill');
   const detail=document.getElementById('llmOverlayDetail');
-  if(pctEl) pctEl.textContent=pct+'%';
-  if(fill)  fill.style.width=pct+'%';
+  if(pctEl) pctEl.textContent=Math.round(pct||0)+'%';
+  if(fill)  fill.style.width=(pct||0)+'%';
   if(detail) detail.textContent=txt;
 }
 
@@ -604,30 +605,54 @@ async function loadLLMModel(onProgress){
   if(_llmLoading)return;
   _llmLoading=true;
   const modelId=getModel();
-  setIaBanner('Chargement du modèle…','loading',0);
   showLLMOverlay(modelId);
-  updateLLMOverlay('Initialisation…', 0);
+  updateLLMOverlay('Initialisation…',0);
+  setIaBanner('Chargement du modèle…','loading',0);
   try{
-    const {MLCEngine}=await import('https://esm.run/@mlc-ai/web-llm');
-    _llmEngine=new MLCEngine();
-    await _llmEngine.reload(modelId,{
-      initProgressCallback:(p)=>{
-        const pct=Math.round((p.progress||0)*100);
-        const txt=p.text||('Chargement… '+pct+'%');
-        onProgress&&onProgress(txt,pct);
-        setIaBanner(txt,'loading',pct);
-        updateLLMOverlay(txt, pct);
+    const {pipeline, env} = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3');
+    env.backends.onnx.wasm.proxy = false;
+    _pipe = await pipeline('text-generation', modelId, {
+      dtype: 'q4',
+      device: 'auto',
+      progress_callback: (p) => {
+        if(p.status === 'downloading'){
+          const pct = p.total ? Math.round(p.loaded/p.total*100) : 0;
+          const txt = 'Téléchargement ' + (p.file||'').split('/').pop() + '… ' + pct + '%';
+          onProgress&&onProgress(txt,pct);
+          updateLLMOverlay(txt,pct);
+          setIaBanner(txt,'loading',pct);
+        } else if(p.status === 'loading'){
+          updateLLMOverlay('Chargement en mémoire…',99);
+          setIaBanner('Chargement en mémoire…','loading',99);
+        }
       }
     });
     _llmReady=true; _llmLoading=false;
     hideLLMOverlay();
-    setIaBanner('Modèle prêt ✓ — '+modelId.split('-').slice(0,2).join('-'),'ready',100);
+    setIaBanner('Modèle prêt ✓ — '+modelId.split('/').pop(),'ready',100);
   }catch(e){
     _llmLoading=false;
     hideLLMOverlay();
     setIaBanner('Erreur : '+e.message,'error',0);
     throw e;
   }
+}
+
+async function callWebLLM(devisText,onProgress){
+  if(!_llmReady) throw new Error('Modèle non chargé.');
+  onProgress&&onProgress(0,'Génération en cours…');
+  const messages=[{role:'user',content:buildPrompt(devisText)}];
+  const out = await _pipe(messages, {
+    max_new_tokens: 1200,
+    temperature: 0.1,
+    do_sample: false,
+    return_full_text: false,
+  });
+  const text = out[0]?.generated_text?.at(-1)?.content || out[0]?.generated_text || '';
+  onProgress&&onProgress(text.length, text);
+  const parsed = extractJsonBlock(typeof text==='string'?text:JSON.stringify(text));
+  if(!parsed) throw new Error('Réponse non interprétable en JSON. Réessayez.');
+  return parsed;
 }
 
 function buildPrompt(devisText){
