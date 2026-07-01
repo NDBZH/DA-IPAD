@@ -142,9 +142,41 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   @media(max-width:600px){.cfg-grid{grid-template-columns:1fr;}.row{flex-direction:column;}}
   .cfg-hint{font-size:12px;color:#999;margin:2px 0 4px;}
   .ens-footer{text-align:center;font-size:12px;color:#aaa;margin-top:24px;padding-top:14px;border-top:1px solid var(--bord);}
+  /* ─── Loading overlay ─── */
+  .llm-overlay{
+    position:fixed;inset:0;z-index:9999;
+    background:rgba(26,26,46,.92);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:32px 24px;gap:20px;backdrop-filter:blur(4px);
+  }
+  .llm-overlay.hidden{display:none;}
+  .llm-overlay-card{
+    background:#fff;border-radius:20px;padding:32px 28px;max-width:420px;width:100%;
+    text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4);
+  }
+  .llm-overlay-icon{font-size:48px;margin-bottom:12px;}
+  .llm-overlay-title{font-size:20px;font-weight:700;color:#324c98;margin-bottom:4px;}
+  .llm-overlay-sub{font-size:14px;color:#6c757d;margin-bottom:20px;}
+  .llm-overlay-pct{font-size:40px;font-weight:700;color:#324c98;margin:8px 0;}
+  .llm-bar-bg{height:12px;background:#e8eef8;border-radius:8px;overflow:hidden;margin:8px 0 16px;}
+  .llm-bar-fill{height:100%;background:linear-gradient(90deg,#324c98,#5b7fd4);border-radius:8px;transition:width .4s ease;width:0%;}
+  .llm-overlay-detail{font-size:12px;color:#999;min-height:18px;word-break:break-word;}
+  .llm-overlay-warn{font-size:13px;color:#c0392b;font-weight:600;margin-top:12px;}
 </style>
 </head>
 <body>
+<!-- Model loading overlay -->
+<div class="llm-overlay hidden" id="llmOverlay">
+  <div class="llm-overlay-card">
+    <div class="llm-overlay-icon">🧠</div>
+    <div class="llm-overlay-title">Chargement du modèle IA</div>
+    <div class="llm-overlay-sub" id="llmOverlayModel">Mistral-7B · première utilisation</div>
+    <div class="llm-overlay-pct" id="llmOverlayPct">0%</div>
+    <div class="llm-bar-bg"><div class="llm-bar-fill" id="llmBarFill"></div></div>
+    <div class="llm-overlay-detail" id="llmOverlayDetail">Initialisation…</div>
+    <div class="llm-overlay-warn">⚠ Ne fermez pas Safari pendant le chargement</div>
+  </div>
+</div>
 <div class="ens-header">
   <svg class="ens-logo-svg" width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
     <!-- ENS Rennes circular logo simplified in white -->
@@ -549,12 +581,33 @@ function setIaBanner(text,state,pct){
   if(f) f.style.width=(pct!=null?pct:state==='ready'?100:0)+'%';
 }
 
+function showLLMOverlay(modelId){
+  const ov=document.getElementById('llmOverlay');
+  const nm=document.getElementById('llmOverlayModel');
+  if(ov) ov.classList.remove('hidden');
+  if(nm) nm.textContent=modelId.split('-').slice(0,2).join('-')+' · première utilisation (~4 Go)';
+}
+function hideLLMOverlay(){
+  const ov=document.getElementById('llmOverlay');
+  if(ov) ov.classList.add('hidden');
+}
+function updateLLMOverlay(txt, pct){
+  const pctEl=document.getElementById('llmOverlayPct');
+  const fill=document.getElementById('llmBarFill');
+  const detail=document.getElementById('llmOverlayDetail');
+  if(pctEl) pctEl.textContent=pct+'%';
+  if(fill)  fill.style.width=pct+'%';
+  if(detail) detail.textContent=txt;
+}
+
 async function loadLLMModel(onProgress){
   if(_llmReady)return;
   if(_llmLoading)return;
   _llmLoading=true;
   const modelId=getModel();
   setIaBanner('Chargement du modèle…','loading',0);
+  showLLMOverlay(modelId);
+  updateLLMOverlay('Initialisation…', 0);
   try{
     const {MLCEngine}=await import('https://esm.run/@mlc-ai/web-llm');
     _llmEngine=new MLCEngine();
@@ -564,12 +617,15 @@ async function loadLLMModel(onProgress){
         const txt=p.text||('Chargement… '+pct+'%');
         onProgress&&onProgress(txt,pct);
         setIaBanner(txt,'loading',pct);
+        updateLLMOverlay(txt, pct);
       }
     });
     _llmReady=true; _llmLoading=false;
+    hideLLMOverlay();
     setIaBanner('Modèle prêt ✓ — '+modelId.split('-').slice(0,2).join('-'),'ready',100);
   }catch(e){
     _llmLoading=false;
+    hideLLMOverlay();
     setIaBanner('Erreur : '+e.message,'error',0);
     throw e;
   }
